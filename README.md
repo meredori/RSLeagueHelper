@@ -17,11 +17,11 @@ A small static helper for RuneScape 3 **Leagues II: Equilibrium**.
 
 `main` deploys automatically through `.github/workflows/pages.yml`.
 
-Expected project-site URL:
+Project-site URL:
 
 `https://meredori.github.io/RSLeagueHelper/`
 
-If the first deployment reports that Pages is not configured, open **Settings → Pages** and set **Build and deployment → Source** to **GitHub Actions**.
+If a deployment ever reports that Pages is not configured, open **Settings → Pages** and set **Build and deployment → Source** to **GitHub Actions**.
 
 ## Privacy
 
