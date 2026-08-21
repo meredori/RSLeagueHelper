@@ -5,190 +5,153 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  const QUICK_POINTS = new Set([10, 30, 80]);
-  const DEFER_POINTS = new Set([10, 30, 80, 200]);
-  const POINT_BUCKETS = [10, 30, 80, 200, 400];
-  const POINT_BONUS = { 10: 1, 30: 3, 80: 8 };
-  const SCORE_DESCRIPTION = 'completion_pct (missing = 0) + point bonus (10 = 1, 30 = 3, 80 = 8) + 15 when explicit numeric skill requirements are met - min(30, 0.5 x total numeric skill gap) + 3 for a blessing task. Ranking aid only; it does not prove a task is easy or account for non-numeric prerequisites.';
+  const SCHEMA_VERSION = 4;
+  const POINTS = { Easy: 10, Medium: 30, Hard: 80, Elite: 200, Master: 400 };
 
-  const PRODUCTION_DOMAINS = [
-    { name: 'smithing', skills: ['smithing'], action: /\b(?:smith|smithing|forge)(?:ed|ing|s)?\b/i },
-    { name: 'smelting', skills: ['smithing'], action: /\bsmelt(?:ed|ing|s)?\b/i },
-    { name: 'fletching', skills: ['fletching'], action: /\b(?:fletch|fletching)(?:ed|ing|s)?\b|\b(?:make|create|craft)\b[^.]{0,60}\b(?:bows?|arrows?|bolts?|darts?)\b/i },
-    { name: 'crafting', skills: ['crafting'], action: /\bcraft(?:ed|ing|s)?\b|\b(?:make|create)\b[^.]{0,60}\b(?:jewellery|jewelry|urns?|pots?|leather|glass|battlestaves|battlestaffs)\b/i },
-    { name: 'cooking', skills: ['cooking'], action: /\b(?:cook|cooking|bake)(?:ed|ing|s)?\b/i },
-    { name: 'herblore production', skills: ['herblore'], action: /\b(?:mix|make|create|brew)(?:ed|ing|s)?\b[^.]{0,60}\b(?:potions?|doses?)\b|\bherblore production\b/i },
-    { name: 'runecrafting production', skills: ['runecrafting'], action: /\b(?:runecraft|runecrafting)(?:ed|ing|s)?\b|\bcraft(?:ed|ing|s)?\b[^.]{0,60}\brunes?\b/i }
+  const RELIC_TIERS = [
+    { tier: 'Tier 1', breakpoint_points: 10, choices: ['Endless Harvest', 'Golden Touch', 'Survivalist'] },
+    { tier: 'Tier 2', breakpoint_points: 750, choices: ['Animal Wrangler', 'Superheated', 'Divine Druid'] },
+    { tier: 'Tier 3', breakpoint_points: 1750, choices: ["Nature's Network", "Assassin's Insight", 'Voidwalker'] },
+    { tier: 'Tier 4', breakpoint_points: 3500, choices: ['Crystal Grace', 'Transmutation', 'Antiquarian'] },
+    { tier: 'Tier 5', breakpoint_points: 6000, choices: ['Clue Connoisseur', 'Production Master', 'Devout'] },
+    { tier: 'Tier 6', breakpoint_points: 12000, choices: ['Perkfection', 'Rejuvenated'] },
+    { tier: 'Tier 7', breakpoint_points: 20000, choices: ['Infernal Fire', 'Naragi Edict', 'Icyenic Faith'] }
   ];
-  const PRODUCTION_SKILLS = new Set(PRODUCTION_DOMAINS.flatMap(domain => domain.skills));
-  const BULK_TEXT = /\b(?:[2-9]\d*|[1-9][\d,]{2,})(?:\s+[a-z'-]+){0,3}\s+(?:bars?|items?|pieces?|sets?|platebodies|weapons?|armou?r|bows?|arrows?|bolts?|darts?|runes?|potions?|doses?|food|fish|sharks?|urns?|pots?|gems?|jewellery|jewelry)\b|\b(?:multiple|several|batch|all|each|every|various|different)\b|\bfull\s+(?:set|inventory)\b|\bsets\s+of\b/i;
 
-  function numericCompletion(task) {
-    return Number.isFinite(task.completion_pct) ? task.completion_pct : null;
-  }
+  const BLESSING_TIERS = [
+    { tier: 'Tier 1', breakpoint_tasks: 1, choices: ['Adrenaline Junkie', 'Big Boned', "Teragard's Aegis"] },
+    { tier: 'Tier 2', breakpoint_tasks: 3, choices: ['Abyssal Cinders', 'Barkscales', 'Striking Light'] },
+    { tier: 'Tier 3', breakpoint_tasks: 5, choices: ['Avernic Rampage', 'Eternal Sustenance', 'Steadfast Will'] },
+    { tier: 'God Tier 1', breakpoint_tasks: 9, choices: ["Demon's Mark", 'Splash Zone', 'Sacred Fervor'] },
+    { tier: 'Tier 4', breakpoint_tasks: 12, choices: ['Havoc Born', 'True Equilibrium', 'Higher Power'] },
+    { tier: 'Tier 5', breakpoint_tasks: 16, choices: ['Unholy Critual', 'Tearing Thorns', 'Lord of Light'] },
+    { tier: 'Tier 6', breakpoint_tasks: 20, choices: ['Perfidious', 'Envenomed', 'Tempered Heart'] },
+    { tier: 'God Tier 2', breakpoint_tasks: 26, choices: ['Chaotic Insight', 'Power Archive', 'Genesis Essence'] }
+  ];
 
-  function skillStatus(task, levels) {
-    const requirements = Array.isArray(task.skill_requirements) ? task.skill_requirements : [];
-    const gaps = requirements.map(requirement => {
-      const current = Number(levels?.[requirement.skill]) || 0;
-      const level = Number(requirement.level) || 0;
-      return { ...requirement, current, gap: Math.max(0, level - current) };
-    });
-    return {
-      gaps,
-      skill_ready: gaps.every(gap => gap.gap === 0),
-      total_skill_gap: gaps.reduce((total, gap) => total + gap.gap, 0),
-      max_skill_gap: gaps.length ? Math.max(...gaps.map(gap => gap.gap)) : 0
-    };
-  }
-
-  function enrichTask(task, levels) {
-    return { ...task, completion_pct: numericCompletion(task), ...skillStatus(task, levels) };
-  }
-
-  function taskView(task, extras) {
-    return {
-      id: task.id,
-      region: task.region,
-      tier: task.tier,
-      points: task.points,
-      task: task.task,
-      info: task.info || '',
-      requirements_text: task.requirements_text || '',
-      skill_requirements: Array.isArray(task.skill_requirements) ? task.skill_requirements : [],
-      skill_ready: task.skill_ready,
-      completion_pct: task.completion_pct,
-      blessing_task: Boolean(task.blessing_task),
-      ...(extras || {})
-    };
-  }
-
-  function compareCompletion(a, b) {
-    const aPct = a.completion_pct;
-    const bPct = b.completion_pct;
-    if (aPct === null && bPct !== null) return 1;
-    if (aPct !== null && bPct === null) return -1;
-    if (aPct !== bPct) return (bPct ?? -Infinity) - (aPct ?? -Infinity);
-    return a.id - b.id;
-  }
-
-  function compareQuickWin(a, b) {
-    const completionOrder = compareCompletion(a, b);
-    if (a.completion_pct !== b.completion_pct) return completionOrder;
-    return b.points - a.points || Number(b.skill_ready) - Number(a.skill_ready) || a.total_skill_gap - b.total_skill_gap || a.id - b.id;
-  }
-
-  function quickWinScore(task) {
-    const completion = task.completion_pct ?? 0;
-    const readyBonus = task.skill_ready ? 15 : 0;
-    const gapPenalty = Math.min(30, task.total_skill_gap * 0.5);
-    const blessingBonus = task.blessing_task ? 3 : 0;
-    return Math.round((completion + (POINT_BONUS[task.points] || 0) + readyBonus - gapPenalty + blessingBonus) * 100) / 100;
-  }
-
-  function compareRankedQuickWin(a, b) {
-    return b.quick_win_score - a.quick_win_score || compareQuickWin(a, b);
-  }
-
-  function pointBuckets(tasks) {
-    const buckets = {};
-    for (const points of POINT_BUCKETS) {
-      const matching = tasks.filter(task => task.points === points);
-      buckets[String(points)] = { task_count: matching.length, total_points: matching.length * points };
-    }
-    return buckets;
-  }
-
-  function productionReason(task) {
-    if (!DEFER_POINTS.has(task.points)) return null;
-    const descriptiveText = `${task.task || ''} ${task.info || ''}`;
-    if (!BULK_TEXT.test(descriptiveText)) return null;
-    const skillNames = new Set((task.skill_requirements || []).map(requirement => String(requirement.skill).toLowerCase()));
-    const hasProductionSkillMetadata = [...skillNames].some(skill => PRODUCTION_SKILLS.has(skill));
-    for (const domain of PRODUCTION_DOMAINS) {
-      const skillMatches = domain.skills.some(skill => skillNames.has(skill));
-      if (domain.action.test(descriptiveText) && (!hasProductionSkillMetadata || skillMatches)) {
-        return `bulk ${domain.name} task; potentially faster after Production Master`;
-      }
-    }
+  function validateCharacter(character) {
+    if (!character || typeof character !== 'object' || Array.isArray(character)) return 'Character JSON must be an object.';
+    if (!Array.isArray(character.league_tasks)) return 'Expected league_tasks to be an array.';
+    if (!character.levels || typeof character.levels !== 'object' || Array.isArray(character.levels)) return 'Expected levels to be an object.';
     return null;
   }
 
-  function buildNearRelicTarget(rankedTasks, currentPoints, nextRelicPoints) {
-    const threshold = Number.isFinite(Number(nextRelicPoints)) ? Math.max(0, Math.trunc(Number(nextRelicPoints))) : 6000;
-    const current = Number.isFinite(Number(currentPoints)) ? Math.max(0, Number(currentPoints)) : 0;
-    const required = Math.max(0, threshold - current);
-    const backupTarget = required === 0 ? 0 : Math.ceil(required * 1.25);
-    const route = [];
-    let cumulative = 0;
-    for (const task of rankedTasks) {
-      if (cumulative >= backupTarget) break;
-      cumulative += task.points;
-      route.push(taskView(task, { quick_win_score: task.quick_win_score, cumulative_points: cumulative }));
-    }
+  function normaliseRegions(regions) {
+    return ['global', ...new Set((regions || []).filter(region => region && region !== 'global'))];
+  }
+
+  function completedIds(character) {
+    return new Set(character.league_tasks.map(Number).filter(Number.isFinite));
+  }
+
+  function selectedIncompleteTasks(tasks, character, regions) {
+    const allowed = new Set(normaliseRegions(regions));
+    const completed = completedIds(character);
+    return (tasks || []).filter(task => allowed.has(task.region) && !completed.has(Number(task.id)));
+  }
+
+  function calculateProgress(tasks, character) {
+    const completed = completedIds(character);
+    const matching = (tasks || []).filter(task => completed.has(Number(task.id)));
     return {
-      next_relic_points: threshold,
-      current_league_points: current,
-      points_required: required,
-      ten_point_tasks_theoretically_required: required ? Math.ceil(required / 10) : 0,
-      thirty_point_tasks_theoretically_required: required ? Math.ceil(required / 30) : 0,
-      eighty_point_tasks_theoretically_required: required ? Math.ceil(required / 80) : 0,
-      backup_points_target: backupTarget,
-      route_available_points: cumulative,
-      target_reached: cumulative >= required,
-      backup_target_reached: cumulative >= backupTarget,
-      route_note: 'Highest-ranked heuristic candidates with backups; not a claim of ease or an optimal route.',
-      ranked_route_with_backups: route
+      completed_task_count: matching.length,
+      league_points: matching.reduce((total, task) => total + (Number(task.points) || 0), 0)
     };
   }
 
-  function buildPlanningData({ tasks, selectedRegions, completedTaskIds, levels, currentPoints, nextRelicPoints }) {
-    const regions = new Set(selectedRegions || []);
-    const completed = new Set((completedTaskIds || []).map(Number));
-    const enrichedRemaining = (tasks || [])
-      .filter(task => regions.has(task.region) && !completed.has(Number(task.id)))
-      .map(task => enrichTask(task, levels || {}));
-
-    const quickCandidates = enrichedRemaining.filter(task => QUICK_POINTS.has(task.points));
-    const quickWinRemaining = [...quickCandidates].sort(compareQuickWin).slice(0, 100).map(task => taskView(task));
-    const highCompletionRemaining = [...enrichedRemaining].sort(compareCompletion).slice(0, 50).map(task => taskView(task));
-    const rankedAll = quickCandidates
-      .map(task => ({ ...task, quick_win_score: quickWinScore(task) }))
-      .sort(compareRankedQuickWin);
-    const rankedQuickWins = rankedAll.slice(0, 50).map(task => taskView(task, { quick_win_score: task.quick_win_score }));
-    const deferCandidates = enrichedRemaining
-      .map(task => ({ task, reason: productionReason(task) }))
-      .filter(candidate => candidate.reason)
-      .sort((a, b) => compareRankedQuickWin(
-        { ...a.task, quick_win_score: quickWinScore(a.task) },
-        { ...b.task, quick_win_score: quickWinScore(b.task) }
-      ))
-      .map(candidate => taskView(candidate.task, { reason: candidate.reason }));
-
+  function taskView(task) {
     return {
-      enriched_remaining: enrichedRemaining,
-      quick_win_scoring: SCORE_DESCRIPTION,
-      quick_win_remaining: quickWinRemaining,
-      high_completion_remaining: highCompletionRemaining,
-      ranked_quick_wins: rankedQuickWins,
-      remaining_by_points: pointBuckets(enrichedRemaining),
-      skill_ready_by_points: pointBuckets(enrichedRemaining.filter(task => task.skill_ready)),
-      near_relic_target: buildNearRelicTarget(rankedAll, currentPoints, nextRelicPoints),
-      production_master_defer_candidates: deferCandidates
+      id: Number(task.id),
+      region: task.region || '',
+      tier: task.tier || '',
+      points: Number(task.points) || 0,
+      task: task.task || '',
+      info: task.info || '',
+      requirements_text: task.requirements_text || '',
+      skill_requirements: Array.isArray(task.skill_requirements) ? task.skill_requirements : [],
+      completion_pct: Number.isFinite(task.completion_pct) ? task.completion_pct : null,
+      blessing_task: Boolean(task.blessing_task)
+    };
+  }
+
+  function selectionsWithBreakpoints(tiers, selections, breakpointKey) {
+    return tiers.map(definition => ({
+      tier: definition.tier,
+      [breakpointKey]: definition[breakpointKey],
+      choice: definition.choices.includes(selections?.[definition.tier]) ? selections[definition.tier] : null
+    }));
+  }
+
+  function buildExport({ tasks, character, regions, relicSelections, blessingSelections, taskDatabase }) {
+    const error = validateCharacter(character);
+    if (error) throw new TypeError(error);
+    const selectedRegions = normaliseRegions(regions);
+    const incomplete = selectedIncompleteTasks(tasks, character, selectedRegions).map(taskView);
+    const progress = calculateProgress(tasks, character);
+    return {
+      schema_version: SCHEMA_VERSION,
+      league: 'RuneScape 3 Leagues II: Equilibrium',
+      task_database: {
+        source: 'RuneScape Wiki Equilibrium League task page',
+        task_count: (tasks || []).length,
+        refreshed_at: taskDatabase?.refreshed_at || null
+      },
+      selected_regions: selectedRegions,
+      relics: selectionsWithBreakpoints(RELIC_TIERS, relicSelections, 'breakpoint_points'),
+      blessings: selectionsWithBreakpoints(BLESSING_TIERS, blessingSelections, 'breakpoint_tasks'),
+      character,
+      derived: { ...progress, incomplete_task_count: incomplete.length },
+      incomplete_tasks: incomplete
+    };
+  }
+
+  function buildClipboardText(exportData) {
+    const prompt = 'Use this as the complete current context for my RS3 Equilibrium character. Recommend only from incomplete_tasks; do not recommend any task listed as completed in character.league_tasks.';
+    return `${prompt}\n\n${JSON.stringify(exportData, null, 2)}`;
+  }
+
+  function validSelections(tiers, value) {
+    const selections = {};
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return selections;
+    for (const definition of tiers) {
+      if (definition.choices.includes(value[definition.tier])) selections[definition.tier] = value[definition.tier];
+    }
+    return selections;
+  }
+
+  function migrateState(state) {
+    const source = state && typeof state === 'object' ? state : {};
+    const relics = validSelections(RELIC_TIERS, source.relics);
+    let blessings = validSelections(BLESSING_TIERS, source.blessing_selections || source.blessings);
+    if (typeof source.blessings === 'string') {
+      const legacy = source.blessings.toLowerCase();
+      blessings = {};
+      for (const definition of BLESSING_TIERS) {
+        const match = definition.choices.find(choice => legacy.includes(choice.toLowerCase()));
+        if (match) blessings[definition.tier] = match;
+      }
+    }
+    return {
+      schema_version: SCHEMA_VERSION,
+      regions: normaliseRegions(Array.isArray(source.regions) ? source.regions : ['global', 'misthalin', 'havenhythe']),
+      relics,
+      blessings,
+      charjson: typeof source.charjson === 'string' ? source.charjson : ''
     };
   }
 
   return {
-    SCORE_DESCRIPTION,
-    skillStatus,
-    enrichTask,
+    SCHEMA_VERSION,
+    POINTS,
+    RELIC_TIERS,
+    BLESSING_TIERS,
+    validateCharacter,
+    normaliseRegions,
+    selectedIncompleteTasks,
+    calculateProgress,
     taskView,
-    compareCompletion,
-    compareQuickWin,
-    quickWinScore,
-    pointBuckets,
-    productionReason,
-    buildNearRelicTarget,
-    buildPlanningData
+    buildExport,
+    buildClipboardText,
+    migrateState
   };
 });

@@ -1,59 +1,292 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RS3 Equilibrium League Helper</title><style>
-:root{color-scheme:dark;--bg:#11151b;--card:#1a2029;--muted:#9aa7b5;--line:#2c3542;--warn:#fdd663;--good:#81c995}*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:#e8edf3}main{max-width:1220px;margin:auto;padding:22px}h1{margin:0 0 6px;font-size:27px}h2{margin:0 0 10px;font-size:18px}p,.muted{color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:15px;margin:14px 0}label{display:block;margin:7px 0}input[type=text],textarea{width:100%;background:#0e1319;color:#e8edf3;border:1px solid var(--line);border-radius:7px;padding:9px}textarea{min-height:170px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px}button{background:#2b5fb8;color:white;border:0;border-radius:8px;padding:9px 13px;cursor:pointer;margin:4px 6px 4px 0;font-weight:650}button.secondary{background:#384352}.checks{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:4px 10px}.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px}.stat{background:#10161d;border:1px solid var(--line);border-radius:10px;padding:11px}.stat b{display:block;font-size:20px;margin-top:3px}.small{font-size:12px;color:var(--muted)}.warn{color:var(--warn)}.good{color:var(--good)}table{border-collapse:collapse;width:100%;font-size:12px}th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{position:sticky;top:0;background:var(--card)}.tablewrap{max-height:440px;overflow:auto;border:1px solid var(--line);border-radius:8px}.status{display:inline-block;padding:3px 8px;border-radius:999px;background:#10161d;border:1px solid var(--line)}
-input[type=number]{width:100%;background:#0e1319;color:#e8edf3;border:1px solid var(--line);border-radius:7px;padding:9px}
-</style></head><body><main><h1>RS3 Equilibrium League Helper</h1><p>Paste the latest character JSON. Regions, relics, blessings and notes persist in your browser. The task database is fetched live from RuneScape Wiki and cached locally.</p>
-<div class="card"><b>Task database:</b> <span id="dbStatus" class="status">Loading…</span> <button class="secondary" onclick="loadTaskDB(true)">Refresh from Wiki</button></div>
-<div class="grid"><section class="card"><h2>Unlocked regions</h2><div class="checks" id="regions"></div></section><section class="card"><h2>Relics</h2><div id="relics"></div><label>Next relic points<input id="nextRelicPoints" type="number" min="0" step="10" value="6000"></label><p class="small">Manual target used for the ChatGPT route candidates.</p></section><section class="card"><h2>Blessings / manual state</h2><label>Chosen blessings<textarea id="blessings" placeholder="Tier 1: ..."></textarea></label><label>Strategy notes<textarea id="notes"></textarea></label></section></div>
-<section class="card"><h2>Latest character JSON</h2><textarea id="charjson">{
-  "username": "Zolgun",
-  "timestamp": "2026-08-18T14:17:08.692Z",
-  "league_tasks": [0,1,2,3,4,5,15,16,22,27,28,29,30,31,32,33,35,36,37,38,40,47,48,50,62,98,100,101,102,104,106,107,108,111,115,116,117,120,133,134,135,136,137,138,139,140,142,143,144,147,148,149,150,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,195,196,197,198,199,200,201,202,203,204,205,206,207,210,211,212,213,214,215,216,217,218,219,220,221,222,536,537,538,540,541,542,543,544,553,594,597,601,602,603,606,609,611,612,664,813,814,815,816,817,818,819,820,821,822,827,828,829,830,831,832,835,836,837,838,839,840,841,843,846,848,849,860,861,862,863,864,865,866,867,879,881,883,884,887,888,889,890,895,896,903,911,912,920,921,964,966,972,975,976,989,1146,1147,1148,1149,1150,1172,1173,1178,1186,1197,1200,1203],
-  "levels": {"Attack":40,"Defence":54,"Strength":40,"Constitution":52,"Ranged":53,"Prayer":33,"Magic":35,"Cooking":72,"Woodcutting":77,"Fletching":65,"Fishing":77,"Firemaking":71,"Crafting":53,"Smithing":61,"Mining":82,"Herblore":59,"Agility":45,"Thieving":75,"Slayer":30,"Farming":84,"Runecrafting":29,"Hunter":31,"Construction":40,"Summoning":30,"Dungeoneering":29,"Divination":54,"Invention":1,"Archaeology":77,"Necromancy":29}
-}</textarea><button onclick="analyse()">Analyse / save state</button><button class="secondary" onclick="resetState()">Reset saved settings</button><div id="error" class="warn"></div></section>
-<section class="card"><h2>Current snapshot</h2><div class="stats" id="stats"></div></section><section class="card"><h2>Selected-region progress</h2><div id="regionProgress"></div></section>
-<section class="card"><h2>Skill-ready remaining tasks</h2><p class="small">Explicit numeric skill requirements only; item/quest/boss prerequisites still need checking.</p><div class="tablewrap"><table><thead><tr><th>ID</th><th>Region</th><th>Tier</th><th>Pts</th><th>Task</th><th>Req.</th><th>Comp%</th><th>Blessing</th></tr></thead><tbody id="readyTasks"></tbody></table></div></section>
-<section class="card"><h2>Near skill breakpoints</h2><p class="small">Largest explicit skill gap is 1–10 levels.</p><div class="tablewrap"><table><thead><tr><th>ID</th><th>Region</th><th>Pts</th><th>Task</th><th>Gap</th><th>Requirements</th></tr></thead><tbody id="nearTasks"></tbody></table></div></section>
-<section class="card"><h2>New-chat handoff</h2><button onclick="copyBrief()">Copy ChatGPT brief</button><button class="secondary" onclick="downloadContext()">Download full context JSON</button><textarea id="brief" readonly></textarea></section>
-<script src="export-logic.js"></script><script>
-const ALL_REGIONS=['global','misthalin','havenhythe','karamja','anachronia','asgarnia','desert','fremennik','kandarin','morytania','tirannwn','wilderness'],DEFAULT_REGIONS=['global','misthalin','havenhythe','karamja','tirannwn'],DEFAULT_RELICS={'Tier 1':'Endless Harvest','Tier 2':'Divine Druid','Tier 3':"Nature's Network",'Tier 4':'Antiquarian','Tier 5':'','Tier 6':'','Tier 7':''},DEFAULT_NOTES="- Butterflies are scarce skip-XP: manually raise low skills when early training is fast, then make an awkward skill the lowest-XP target.\n- Free porter effect is available; consider it when evaluating gathering/drop logistics.\n- Prefer clusters: same-area tasks, gear/equip chains, production chains, boss kills + Combat Mastery/Blessing tasks.\n- Region and League unlocks can bypass normal quest/key/killcount gates; do not assume main-game gating.\n- Current combat focus is Ranged; sharks are banked for PvM food.\n- Always remove completed task IDs before recommending tasks.",POINTS={Easy:10,Medium:30,Hard:80,Elite:200,Master:400};
-const WIKI_API='https://runescape.wiki/api.php?action=parse&page=Equilibrium_League%2FTasks&prop=text&format=json&origin=*'; let TASKS=[],lastAnalysis=null;
-function title(s){return s.split(/[_ -]/).map(x=>x?x[0].toUpperCase()+x.slice(1):x).join(' ')} function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
-function parseTasks(html){const d=new DOMParser().parseFromString(html,'text/html'),out=[];d.querySelectorAll('tr[data-taskid]').forEach(row=>{const cells=[...row.querySelectorAll(':scope > td')];if(cells.length<3)return;const tier=row.dataset.tasktier||'',region=row.dataset.leagueRegionForFiltering||'';let pct=null;for(const c of [...cells].reverse()){if(c.textContent.includes('%')){const v=Number(c.dataset.sortValue);if(Number.isFinite(v))pct=v;break}}const reqs=[];row.querySelectorAll('.skillreq[data-skill][data-level]').forEach(s=>{const r={skill:s.dataset.skill,level:Number(s.dataset.level)};if(!reqs.some(x=>x.skill===r.skill&&x.level===r.level))reqs.push(r)});out.push({id:Number(row.dataset.taskid),region,tier,points:POINTS[tier]||0,blessing_task:row.dataset.blessingTask==='yes',task:(cells[1]?.textContent||'').trim().replace(/\s+/g,' '),info:(cells[2]?.textContent||'').trim().replace(/\s+/g,' '),requirements_text:(cells[3]?.textContent||'').trim().replace(/\s+/g,' '),skill_requirements:reqs,completion_pct:pct})});return out}
-async function loadTaskDB(force=false){const st=document.getElementById('dbStatus');if(!force){try{const cached=JSON.parse(localStorage.getItem('rsleague-task-db')||'null');if(cached?.tasks?.length){TASKS=cached.tasks;st.textContent=`${TASKS.length} cached tasks`;st.className='status good';analyse();}}catch(e){}}try{st.textContent='Refreshing from Wiki…';const r=await fetch(WIKI_API);if(!r.ok)throw new Error(`HTTP ${r.status}`);const j=await r.json(),tasks=parseTasks(j.parse.text['*']);if(tasks.length<500)throw new Error(`Only parsed ${tasks.length} tasks`);TASKS=tasks;localStorage.setItem('rsleague-task-db',JSON.stringify({saved:new Date().toISOString(),tasks}));st.textContent=`${TASKS.length} live tasks`;st.className='status good';analyse()}catch(e){if(TASKS.length){st.textContent=`Using ${TASKS.length} cached tasks (refresh failed)`;st.className='status warn'}else{st.textContent='Task DB unavailable — retry refresh';st.className='status warn'}console.error(e)}}
-function loadState(){let s={};try{s=JSON.parse(localStorage.getItem('rsleague-player-state')||'{}')}catch(e){}const cr=s.regions||DEFAULT_REGIONS;document.getElementById('regions').innerHTML=ALL_REGIONS.map(r=>`<label><input type="checkbox" data-region="${r}" ${cr.includes(r)?'checked':''} ${r==='global'?'disabled':''}> ${title(r)}</label>`).join('');const relics=s.relics||DEFAULT_RELICS;document.getElementById('relics').innerHTML=Object.keys(DEFAULT_RELICS).map(t=>`<label>${t}<input type="text" data-relic="${t}" value="${esc(relics[t]||'')}"></label>`).join('');document.getElementById('nextRelicPoints').value=Number.isFinite(Number(s.next_relic_points))?Math.max(0,Math.trunc(Number(s.next_relic_points))):6000;document.getElementById('blessings').value=s.blessings||'';document.getElementById('notes').value=s.notes||DEFAULT_NOTES;if(s.charjson)document.getElementById('charjson').value=s.charjson}
-function getRegions(){return ['global',...[...document.querySelectorAll('[data-region]:checked')].map(x=>x.dataset.region).filter(x=>x!=='global')]} function getRelics(){const o={};document.querySelectorAll('[data-relic]').forEach(x=>o[x.dataset.relic]=x.value.trim());return o} function getNextRelicPoints(){const value=Number(document.getElementById('nextRelicPoints').value);return Number.isFinite(value)?Math.max(0,Math.trunc(value)):6000}
-function status(t,levels){const gaps=t.skill_requirements.map(r=>({...r,current:levels[r.skill]??0,gap:Math.max(0,r.level-(levels[r.skill]??0))}));return{gaps,ready:gaps.every(g=>g.gap===0),maxGap:gaps.length?Math.max(...gaps.map(g=>g.gap)):0}}
-function analyse(){const er=document.getElementById('error');er.textContent='';let c;try{c=JSON.parse(document.getElementById('charjson').value)}catch(e){er.textContent='Invalid character JSON: '+e.message;return}if(!Array.isArray(c.league_tasks)||!c.levels){er.textContent='Expected league_tasks[] and levels{}.';return}if(!TASKS.length){er.textContent='Waiting for task database…';return}const regions=getRegions(),relics=getRelics(),done=new Set(c.league_tasks.map(Number)),completed=TASKS.filter(t=>done.has(t.id)),selected=TASKS.filter(t=>regions.includes(t.region)),remaining=selected.filter(t=>!done.has(t.id)),points=completed.reduce((a,t)=>a+t.points,0),bless=completed.filter(t=>t.blessing_task),ready=remaining.map(t=>({t,s:status(t,c.levels)})).filter(x=>x.s.ready).sort((a,b)=>b.t.points-a.t.points||(b.t.completion_pct??-1)-(a.t.completion_pct??-1)),near=remaining.map(t=>({t,s:status(t,c.levels)})).filter(x=>x.s.maxGap>=1&&x.s.maxGap<=10).sort((a,b)=>a.s.maxGap-b.s.maxGap||b.t.points-a.t.points),lp=Object.entries(c.levels).sort((a,b)=>a[1]-b[1]);document.getElementById('stats').innerHTML=[['Username',c.username||'—'],['Snapshot',c.timestamp||'—'],['Completed tasks',completed.length],['League points',points.toLocaleString()],['Blessing tasks',bless.length],['Selected task pool',selected.length],['Remaining selected',remaining.length],['Lowest skills',lp.slice(0,5).map(x=>x.join(' ')).join(', ')]].map(x=>`<div class="stat"><span class="small">${esc(x[0])}</span><b>${esc(x[1])}</b></div>`).join('');document.getElementById('regionProgress').innerHTML=`<table><thead><tr><th>Region</th><th>Tasks</th><th>Earned</th><th>Remaining</th></tr></thead><tbody>${regions.map(r=>{const rt=TASKS.filter(t=>t.region===r),rd=rt.filter(t=>done.has(t.id));return `<tr><td>${title(r)}</td><td>${rd.length} / ${rt.length}</td><td>${rd.reduce((a,t)=>a+t.points,0).toLocaleString()}</td><td>${rt.filter(t=>!done.has(t.id)).reduce((a,t)=>a+t.points,0).toLocaleString()}</td></tr>`}).join('')}</tbody></table>`;document.getElementById('readyTasks').innerHTML=ready.slice(0,180).map(x=>`<tr><td>${x.t.id}</td><td>${title(x.t.region)}</td><td>${x.t.tier}</td><td><b>${x.t.points}</b></td><td>${esc(x.t.task)}</td><td>${esc(x.t.skill_requirements.map(q=>`${q.skill} ${q.level}`).join(', ')||'—')}</td><td>${x.t.completion_pct??'—'}</td><td>${x.t.blessing_task?'✓':''}</td></tr>`).join('');document.getElementById('nearTasks').innerHTML=near.slice(0,140).map(x=>`<tr><td>${x.t.id}</td><td>${title(x.t.region)}</td><td>${x.t.points}</td><td>${esc(x.t.task)}</td><td class="warn">${esc(x.s.gaps.filter(g=>g.gap>0).map(g=>`${g.skill} +${g.gap} → ${g.level}`).join(', '))}</td><td>${esc(x.t.skill_requirements.map(q=>`${q.skill} ${q.level}`).join(', '))}</td></tr>`).join('');const briefObj={purpose:"Source of truth for Zolgun's current RS3 Equilibrium state. Remove completed task IDs before advising. Prefer task clusters, League/region shortcuts, attainable gear, and points/time. 'Skill-ready' only means explicit numeric skill requirements are met; verify other prerequisites.",league:'RS3 Leagues II: Equilibrium',task_db:{source:'RuneScape Wiki live task page',task_count:TASKS.length,refreshed:new Date().toISOString()},selected_regions:regions,relics,blessings_manual:document.getElementById('blessings').value.trim(),completed_blessing_tasks:bless.map(t=>({id:t.id,region:t.region,task:t.task})),strategy_notes:document.getElementById('notes').value.split('\n').filter(Boolean),character:c,derived:{completed_task_count:completed.length,league_points:points,selected_region_task_pool:selected.length,remaining_selected_tasks:remaining.length,lowest_skills:lp.slice(0,8),highest_skills:[...lp].reverse().slice(0,8)},top_skill_ready_remaining:ready.slice(0,40).map(x=>({id:x.t.id,region:x.t.region,tier:x.t.tier,points:x.t.points,task:x.t.task,skill_requirements:x.t.skill_requirements,completion_pct:x.t.completion_pct,blessing_task:x.t.blessing_task})),near_skill_breakpoints:near.slice(0,25).map(x=>({id:x.t.id,region:x.t.region,points:x.t.points,task:x.t.task,gaps:x.s.gaps.filter(g=>g.gap>0)}))};document.getElementById('brief').value='ZOLGUN EQUILIBRIUM LEAGUE STATE\n'+JSON.stringify(briefObj,null,2);lastAnalysis={briefObj,c,regions,relics,points,bless};localStorage.setItem('rsleague-player-state',JSON.stringify({regions,relics,blessings:document.getElementById('blessings').value,notes:document.getElementById('notes').value,charjson:document.getElementById('charjson').value}))}
-function analyseV3(){
-  const er=document.getElementById('error');er.textContent='';let c;
-  try{c=JSON.parse(document.getElementById('charjson').value)}catch(e){er.textContent='Invalid character JSON: '+e.message;return}
-  if(!Array.isArray(c.league_tasks)||!c.levels){er.textContent='Expected league_tasks[] and levels{}.';return}
-  if(!TASKS.length){er.textContent='Waiting for task database…';return}
-  const regions=getRegions(),relics=getRelics(),nextRelicPoints=getNextRelicPoints(),done=new Set(c.league_tasks.map(Number));
-  const completed=TASKS.filter(t=>done.has(t.id)),selected=TASKS.filter(t=>regions.includes(t.region));
-  const points=completed.reduce((a,t)=>a+t.points,0),bless=completed.filter(t=>t.blessing_task);
-  const planning=LeagueExport.buildPlanningData({tasks:TASKS,selectedRegions:regions,completedTaskIds:c.league_tasks,levels:c.levels,currentPoints:points,nextRelicPoints});
-  const remaining=planning.enriched_remaining;
-  const ready=remaining.filter(t=>t.skill_ready).sort((a,b)=>b.points-a.points||(b.completion_pct??-1)-(a.completion_pct??-1)||a.id-b.id);
-  const near=remaining.filter(t=>t.max_skill_gap>=1&&t.max_skill_gap<=10).sort((a,b)=>a.max_skill_gap-b.max_skill_gap||b.points-a.points||a.id-b.id);
-  const lp=Object.entries(c.levels).sort((a,b)=>a[1]-b[1]),{enriched_remaining,...planningSections}=planning;
-  document.getElementById('stats').innerHTML=[['Username',c.username||'—'],['Snapshot',c.timestamp||'—'],['Completed tasks',completed.length],['League points',points.toLocaleString()],['Next relic',nextRelicPoints.toLocaleString()],['Points required',Math.max(0,nextRelicPoints-points).toLocaleString()],['Blessing tasks',bless.length],['Selected task pool',selected.length],['Remaining selected',remaining.length],['Lowest skills',lp.slice(0,5).map(x=>x.join(' ')).join(', ')]].map(x=>`<div class="stat"><span class="small">${esc(x[0])}</span><b>${esc(x[1])}</b></div>`).join('');
-  document.getElementById('regionProgress').innerHTML=`<table><thead><tr><th>Region</th><th>Tasks</th><th>Earned</th><th>Remaining</th></tr></thead><tbody>${regions.map(r=>{const rt=TASKS.filter(t=>t.region===r),rd=rt.filter(t=>done.has(t.id));return `<tr><td>${title(r)}</td><td>${rd.length} / ${rt.length}</td><td>${rd.reduce((a,t)=>a+t.points,0).toLocaleString()}</td><td>${rt.filter(t=>!done.has(t.id)).reduce((a,t)=>a+t.points,0).toLocaleString()}</td></tr>`}).join('')}</tbody></table>`;
-  document.getElementById('readyTasks').innerHTML=ready.slice(0,180).map(t=>`<tr><td>${t.id}</td><td>${title(t.region)}</td><td>${t.tier}</td><td><b>${t.points}</b></td><td>${esc(t.task)}</td><td>${esc(t.skill_requirements.map(q=>`${q.skill} ${q.level}`).join(', ')||'—')}</td><td>${t.completion_pct??'—'}</td><td>${t.blessing_task?'✓':''}</td></tr>`).join('');
-  document.getElementById('nearTasks').innerHTML=near.slice(0,140).map(t=>`<tr><td>${t.id}</td><td>${title(t.region)}</td><td>${t.points}</td><td>${esc(t.task)}</td><td class="warn">${esc(t.gaps.filter(g=>g.gap>0).map(g=>`${g.skill} +${g.gap} → ${g.level}`).join(', '))}</td><td>${esc(t.skill_requirements.map(q=>`${q.skill} ${q.level}`).join(', '))}</td></tr>`).join('');
-  const topReady=ready.slice(0,40).map(t=>LeagueExport.taskView(t));
-  const nearBreakpoints=near.slice(0,25).map(t=>LeagueExport.taskView(t,{gaps:t.gaps.filter(g=>g.gap>0)}));
-  const briefObj={schema_version:3,purpose:"Source of truth for Zolgun's current RS3 Equilibrium state. Completed task IDs have been removed from every remaining-task view. Rankings are planning aids only: 'skill-ready' covers explicit numeric levels, not items, quests, access, purchases, combat, or production chains.",league:'RS3 Leagues II: Equilibrium',task_db:{source:'RuneScape Wiki live task page',task_count:TASKS.length,refreshed:new Date().toISOString()},selected_regions:regions,relics,next_relic_points:nextRelicPoints,blessings_manual:document.getElementById('blessings').value.trim(),completed_blessing_tasks:bless.map(t=>({id:t.id,region:t.region,task:t.task})),strategy_notes:document.getElementById('notes').value.split('\n').filter(Boolean),character:c,derived:{completed_task_count:completed.length,league_points:points,selected_region_task_pool:selected.length,remaining_selected_tasks:remaining.length,lowest_skills:lp.slice(0,8),highest_skills:[...lp].reverse().slice(0,8)},top_skill_ready_remaining:topReady,near_skill_breakpoints:nearBreakpoints,...planningSections};
-  document.getElementById('brief').value='ZOLGUN EQUILIBRIUM LEAGUE STATE\n'+JSON.stringify(briefObj,null,2);
-  lastAnalysis={briefObj,c,regions,relics,nextRelicPoints,points,bless,planningSections,topReady,nearBreakpoints};
-  localStorage.setItem('rsleague-player-state',JSON.stringify({regions,relics,next_relic_points:nextRelicPoints,blessings:document.getElementById('blessings').value,notes:document.getElementById('notes').value,charjson:document.getElementById('charjson').value}));
-}
-async function copyBrief(){if(!lastAnalysis)analyse();if(lastAnalysis)await navigator.clipboard.writeText(document.getElementById('brief').value)}
-function downloadContextV3(){
-  if(!lastAnalysis)analyse();if(!lastAnalysis)return;
-  const full={schema_version:3,league:'RuneScape 3 Leagues II: Equilibrium',task_database:{source:'RuneScape Wiki live',tasks:TASKS},player_config:{selected_regions:lastAnalysis.regions,relics:lastAnalysis.relics,next_relic_points:lastAnalysis.nextRelicPoints,blessings_chosen:document.getElementById('blessings').value.trim(),strategy_notes:document.getElementById('notes').value.split('\n').filter(Boolean)},character:lastAnalysis.c,derived:{league_points:lastAnalysis.points,completed_blessing_task_ids:lastAnalysis.bless.map(t=>t.id)},top_skill_ready_remaining:lastAnalysis.topReady,near_skill_breakpoints:lastAnalysis.nearBreakpoints,...lastAnalysis.planningSections};
-  const b=new Blob([JSON.stringify(full,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='Zolgun_Equilibrium_Context.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),0);
-}
-function resetState(){localStorage.removeItem('rsleague-player-state');location.reload()}
-analyse=analyseV3;downloadContext=downloadContextV3;loadState();loadTaskDB(false);
-</script></main></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>RS3 Equilibrium Context Exporter</title>
+  <style>
+    :root { color-scheme: dark; --bg:#11151b; --card:#1a2029; --muted:#9aa7b5; --line:#2c3542; --warn:#fdd663; --good:#81c995; }
+    * { box-sizing:border-box; }
+    body { margin:0; font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:#e8edf3; }
+    main { max-width:1120px; margin:auto; padding:22px; }
+    h1 { margin:0 0 6px; font-size:27px; }
+    h2 { margin:0 0 10px; font-size:18px; }
+    p,.muted { color:var(--muted); }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(290px,1fr)); gap:14px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:15px; margin:14px 0; }
+    label { display:block; margin:8px 0; }
+    select,textarea { width:100%; background:#0e1319; color:#e8edf3; border:1px solid var(--line); border-radius:7px; padding:9px; }
+    textarea { min-height:220px; font-family:ui-monospace,SFMono-Regular,Consolas,monospace; font-size:12px; resize:vertical; }
+    #output { min-height:420px; }
+    button { background:#2b5fb8; color:white; border:0; border-radius:8px; padding:9px 13px; cursor:pointer; margin:4px 6px 4px 0; font-weight:650; }
+    button.secondary { background:#384352; }
+    button:disabled { cursor:not-allowed; opacity:.5; }
+    .checks { display:grid; grid-template-columns:repeat(auto-fit,minmax(145px,1fr)); gap:5px 10px; }
+    .checks label { margin:2px 0; }
+    .status { display:inline-block; padding:3px 8px; border-radius:999px; background:#10161d; border:1px solid var(--line); }
+    .warn { color:var(--warn); }
+    .good { color:var(--good); }
+    .small { font-size:12px; color:var(--muted); }
+    .select-label { display:flex; justify-content:space-between; gap:8px; margin-bottom:3px; }
+    .breakpoint { color:var(--muted); font-size:12px; }
+    .actions { display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
+    #copyStatus { min-height:20px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>RS3 Equilibrium Context Exporter</h1>
+  <p>Paste your character JSON, choose your unlocked regions, relics, and blessings, then copy one complete list of available incomplete tasks.</p>
+
+  <section class="card">
+    <b>Task database:</b> <span id="dbStatus" class="status">Loading…</span>
+    <button class="secondary" id="refreshButton" type="button">Refresh from Wiki</button>
+  </section>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Unlocked regions</h2>
+      <div class="checks" id="regions"></div>
+    </section>
+    <section class="card">
+      <h2>Relics</h2>
+      <div id="relics"></div>
+    </section>
+    <section class="card">
+      <h2>Blessings</h2>
+      <div id="blessings"></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>Character JSON</h2>
+    <textarea id="charjson" spellcheck="false" placeholder='Paste JSON containing at least "league_tasks": [] and "levels": {}'></textarea>
+    <div class="actions">
+      <button id="buildButton" type="button">Build export</button>
+      <span id="error" class="warn" role="alert"></span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>ChatGPT context</h2>
+    <p class="small">Contains your exact character object and every incomplete task from Global and the regions checked above.</p>
+    <div class="actions">
+      <button id="copyButton" type="button" disabled>Copy complete context</button>
+      <span id="copyStatus" class="good" aria-live="polite"></span>
+    </div>
+    <textarea id="output" readonly spellcheck="false" placeholder="Your export will appear here."></textarea>
+  </section>
+</main>
+
+<script src="export-logic.js"></script>
+<script>
+  const REGION_DEFINITIONS = [
+    ['global', 'Global'],
+    ['misthalin', 'Misthalin'],
+    ['havenhythe', 'Havenhythe'],
+    ['karamja', 'Karamja'],
+    ['anachronia', 'Anachronia'],
+    ['asgarnia', 'Asgarnia'],
+    ['desert', 'Kharidian Desert'],
+    ['fremennik', 'Fremennik Province'],
+    ['kandarin', 'Kandarin'],
+    ['morytania', 'Morytania'],
+    ['tirannwn', 'Tirannwn'],
+    ['wilderness', 'Wilderness']
+  ];
+  const WIKI_API = 'https://runescape.wiki/api.php?action=parse&page=Equilibrium_League%2FTasks&prop=text&format=json&origin=*';
+  const STATE_KEY = 'rsleague-player-state';
+  const TASK_DB_KEY = 'rsleague-task-db';
+  let TASKS = [];
+  let TASK_DATABASE = { refreshed_at: null };
+  let state = LeagueExport.migrateState(readJson(STATE_KEY));
+
+  function readJson(key) {
+    try { return JSON.parse(localStorage.getItem(key) || 'null'); }
+    catch (error) { return null; }
+  }
+
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, character => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[character]);
+  }
+
+  function renderSelects(containerId, definitions, selections, breakpointKey, breakpointLabel) {
+    document.getElementById(containerId).innerHTML = definitions.map(definition => {
+      const options = ['<option value="">Unselected</option>', ...definition.choices.map(choice =>
+        `<option value="${escapeHtml(choice)}" ${selections[definition.tier] === choice ? 'selected' : ''}>${escapeHtml(choice)}</option>`
+      )].join('');
+      return `<label><span class="select-label"><span>${escapeHtml(definition.tier)}</span><span class="breakpoint">${definition[breakpointKey].toLocaleString()} ${breakpointLabel}</span></span><select data-selection="${escapeHtml(containerId)}" data-tier="${escapeHtml(definition.tier)}">${options}</select></label>`;
+    }).join('');
+  }
+
+  function renderControls() {
+    const selected = new Set(state.regions);
+    document.getElementById('regions').innerHTML = REGION_DEFINITIONS.map(([id, label]) =>
+      `<label><input type="checkbox" data-region="${id}" ${selected.has(id) ? 'checked' : ''} ${id === 'global' ? 'disabled' : ''}> ${label}</label>`
+    ).join('');
+    renderSelects('relics', LeagueExport.RELIC_TIERS, state.relics, 'breakpoint_points', 'points');
+    renderSelects('blessings', LeagueExport.BLESSING_TIERS, state.blessings, 'breakpoint_tasks', 'tasks');
+    document.getElementById('charjson').value = state.charjson;
+  }
+
+  function getRegions() {
+    return LeagueExport.normaliseRegions([...document.querySelectorAll('[data-region]:checked')].map(input => input.dataset.region));
+  }
+
+  function getSelections(containerId) {
+    const values = {};
+    document.querySelectorAll(`#${containerId} [data-tier]`).forEach(select => {
+      if (select.value) values[select.dataset.tier] = select.value;
+    });
+    return values;
+  }
+
+  function saveState(characterText) {
+    state = {
+      schema_version: LeagueExport.SCHEMA_VERSION,
+      regions: getRegions(),
+      relics: getSelections('relics'),
+      blessings: getSelections('blessings'),
+      charjson: characterText
+    };
+    localStorage.setItem(STATE_KEY, JSON.stringify(state));
+  }
+
+  function parseTasks(html) {
+    const documentFragment = new DOMParser().parseFromString(html, 'text/html');
+    const tasks = [];
+    documentFragment.querySelectorAll('tr[data-taskid]').forEach(row => {
+      const cells = [...row.querySelectorAll(':scope > td')];
+      if (cells.length < 3) return;
+      let completion = null;
+      for (const cell of [...cells].reverse()) {
+        if (!cell.textContent.includes('%')) continue;
+        const value = Number(cell.dataset.sortValue);
+        if (Number.isFinite(value)) completion = value;
+        break;
+      }
+      const skillRequirements = [];
+      row.querySelectorAll('.skillreq[data-skill][data-level]').forEach(skill => {
+        const requirement = { skill: skill.dataset.skill, level: Number(skill.dataset.level) };
+        if (!skillRequirements.some(current => current.skill === requirement.skill && current.level === requirement.level)) skillRequirements.push(requirement);
+      });
+      const tier = row.dataset.tasktier || '';
+      tasks.push({
+        id: Number(row.dataset.taskid),
+        region: row.dataset.leagueRegionForFiltering || '',
+        tier,
+        points: LeagueExport.POINTS[tier] || 0,
+        blessing_task: row.dataset.blessingTask === 'yes',
+        task: (cells[1]?.textContent || '').trim().replace(/\s+/g, ' '),
+        info: (cells[2]?.textContent || '').trim().replace(/\s+/g, ' '),
+        requirements_text: (cells[3]?.textContent || '').trim().replace(/\s+/g, ' '),
+        skill_requirements: skillRequirements,
+        completion_pct: completion
+      });
+    });
+    return tasks;
+  }
+
+  function setDatabaseStatus(message, className) {
+    const status = document.getElementById('dbStatus');
+    status.textContent = message;
+    status.className = `status ${className || ''}`;
+  }
+
+  async function loadTaskDB(force = false) {
+    const cached = readJson(TASK_DB_KEY);
+    if (!force && cached?.tasks?.length) {
+      TASKS = cached.tasks;
+      TASK_DATABASE.refreshed_at = cached.saved || null;
+      setDatabaseStatus(`${TASKS.length} cached tasks`, 'good');
+      buildExport();
+    }
+    try {
+      setDatabaseStatus('Refreshing from Wiki…', '');
+      const response = await fetch(WIKI_API);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json();
+      const tasks = parseTasks(payload.parse.text['*']);
+      if (tasks.length < 500) throw new Error(`Only parsed ${tasks.length} tasks`);
+      const saved = new Date().toISOString();
+      TASKS = tasks;
+      TASK_DATABASE.refreshed_at = saved;
+      localStorage.setItem(TASK_DB_KEY, JSON.stringify({ saved, tasks }));
+      setDatabaseStatus(`${TASKS.length} live tasks`, 'good');
+      buildExport();
+    } catch (error) {
+      if (TASKS.length) setDatabaseStatus(`Using ${TASKS.length} cached tasks (refresh failed)`, 'warn');
+      else {
+        setDatabaseStatus('Task database unavailable — retry refresh', 'warn');
+        showError('The task database must load before an export can be built.');
+      }
+      console.error(error);
+    }
+  }
+
+  function showError(message) {
+    document.getElementById('error').textContent = message || '';
+  }
+
+  function buildExport() {
+    const output = document.getElementById('output');
+    const copyButton = document.getElementById('copyButton');
+    document.getElementById('copyStatus').textContent = '';
+    showError('');
+    if (!TASKS.length) {
+      output.value = '';
+      copyButton.disabled = true;
+      return false;
+    }
+    const characterText = document.getElementById('charjson').value.trim();
+    let character;
+    try { character = JSON.parse(characterText); }
+    catch (error) {
+      output.value = '';
+      copyButton.disabled = true;
+      showError(characterText ? `Invalid character JSON: ${error.message}` : 'Paste your character JSON first.');
+      return false;
+    }
+    const validationError = LeagueExport.validateCharacter(character);
+    if (validationError) {
+      output.value = '';
+      copyButton.disabled = true;
+      showError(validationError);
+      return false;
+    }
+    const exportData = LeagueExport.buildExport({
+      tasks: TASKS,
+      character,
+      regions: getRegions(),
+      relicSelections: getSelections('relics'),
+      blessingSelections: getSelections('blessings'),
+      taskDatabase: TASK_DATABASE
+    });
+    output.value = LeagueExport.buildClipboardText(exportData);
+    copyButton.disabled = false;
+    saveState(characterText);
+    return true;
+  }
+
+  async function copyExport() {
+    if (!buildExport()) return;
+    try {
+      await navigator.clipboard.writeText(document.getElementById('output').value);
+      document.getElementById('copyStatus').textContent = 'Copied.';
+    } catch (error) {
+      showError(`Could not access the clipboard: ${error.message}`);
+    }
+  }
+
+  renderControls();
+  document.getElementById('refreshButton').addEventListener('click', () => loadTaskDB(true));
+  document.getElementById('buildButton').addEventListener('click', buildExport);
+  document.getElementById('copyButton').addEventListener('click', copyExport);
+  document.querySelectorAll('[data-region], [data-tier]').forEach(control => control.addEventListener('change', () => {
+    saveState(document.getElementById('charjson').value);
+    if (TASKS.length && document.getElementById('charjson').value.trim()) buildExport();
+  }));
+  loadTaskDB(false);
+</script>
+</body>
+</html>

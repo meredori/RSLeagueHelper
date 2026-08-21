@@ -4,130 +4,135 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const LeagueExport = require('../export-logic.js');
 
-function task(id, points, overrides = {}) {
-  const tiers = { 10: 'Easy', 30: 'Medium', 80: 'Hard', 200: 'Elite', 400: 'Master' };
+function task(id, region = 'global', overrides = {}) {
   return {
     id,
-    region: 'global',
-    tier: tiers[points],
-    points,
+    region,
+    tier: 'Easy',
+    points: 10,
     task: `Task ${id}`,
     info: `Info ${id}`,
     requirements_text: `Requirements ${id}`,
     skill_requirements: [],
-    completion_pct: 10,
+    completion_pct: 25,
     blessing_task: false,
     ...overrides
   };
 }
 
+function character(overrides = {}) {
+  return { username: 'Player', league_tasks: [], levels: { Attack: 50 }, ...overrides };
+}
+
 function build(tasks, overrides = {}) {
-  return LeagueExport.buildPlanningData({
+  return LeagueExport.buildExport({
     tasks,
-    selectedRegions: ['global'],
-    completedTaskIds: [],
-    levels: { Smithing: 50, Cooking: 50, Fletching: 50 },
-    currentPoints: 5900,
-    nextRelicPoints: 6000,
+    character: character(),
+    regions: ['global', 'misthalin'],
+    relicSelections: {},
+    blessingSelections: {},
+    taskDatabase: { refreshed_at: '2026-08-21T00:00:00.000Z' },
     ...overrides
   });
 }
 
-test('filters completed and unselected tasks before every remaining-task section', () => {
-  const data = build([
-    task(1, 10),
-    task(2, 30),
-    task(3, 80, { region: 'desert' }),
-    task(4, 200, { task: 'Smith 100 rune bars', skill_requirements: [{ skill: 'Smithing', level: 40 }] })
-  ], { completedTaskIds: [1] });
-  const sections = [
-    data.quick_win_remaining,
-    data.high_completion_remaining,
-    data.ranked_quick_wins,
-    data.near_relic_target.ranked_route_with_backups,
-    data.production_master_defer_candidates
-  ];
-  for (const section of sections) assert.equal(section.some(entry => entry.id === 1 || entry.id === 3), false);
-  assert.deepEqual(data.remaining_by_points['10'], { task_count: 0, total_points: 0 });
+test('validates the required character JSON shape', () => {
+  assert.equal(LeagueExport.validateCharacter(null), 'Character JSON must be an object.');
+  assert.equal(LeagueExport.validateCharacter({ league_tasks: {}, levels: {} }), 'Expected league_tasks to be an array.');
+  assert.equal(LeagueExport.validateCharacter({ league_tasks: [], levels: [] }), 'Expected levels to be an object.');
+  assert.equal(LeagueExport.validateCharacter(character()), null);
 });
 
-test('quick-win sorting follows completion, points, readiness, total gap, then ID', () => {
-  const data = build([
-    task(1, 80, { completion_pct: 40, skill_requirements: [{ skill: 'Smithing', level: 60 }] }),
-    task(2, 30, { completion_pct: 50 }),
-    task(3, 80, { completion_pct: 50, skill_requirements: [{ skill: 'Smithing', level: 55 }] }),
-    task(4, 80, { completion_pct: 50 }),
-    task(5, 80, { completion_pct: null })
-  ]);
-  assert.deepEqual(data.quick_win_remaining.map(entry => entry.id), [4, 3, 2, 1, 5]);
-  assert.deepEqual(data.high_completion_remaining.map(entry => entry.id), [2, 3, 4, 1, 5]);
+test('exports only incomplete tasks from Global and selected regions', () => {
+  const result = build([
+    task(1),
+    task(2, 'global'),
+    task(3, 'misthalin'),
+    task(4, 'desert')
+  ], { character: character({ league_tasks: [1] }) });
+
+  assert.deepEqual(result.selected_regions, ['global', 'misthalin']);
+  assert.deepEqual(result.incomplete_tasks.map(entry => entry.id), [2, 3]);
+  assert.deepEqual(result.derived, { completed_task_count: 1, league_points: 10, incomplete_task_count: 2 });
 });
 
-test('score is transparent and numeric skill readiness is vacuously true without requirements', () => {
-  const readyBlessing = LeagueExport.enrichTask(task(1, 80, { completion_pct: 20, blessing_task: true }), {});
-  const gapTask = LeagueExport.enrichTask(task(2, 30, {
+test('Global is always included and duplicate region choices are removed', () => {
+  assert.deepEqual(LeagueExport.normaliseRegions(['misthalin', 'global', 'misthalin']), ['global', 'misthalin']);
+  const result = build([task(1), task(2, 'misthalin')], { regions: [] });
+  assert.deepEqual(result.incomplete_tasks.map(entry => entry.id), [1]);
+});
+
+test('exports every eligible task without truncation', () => {
+  const tasks = Array.from({ length: 750 }, (_, index) => task(index + 1));
+  const result = build(tasks);
+  assert.equal(result.incomplete_tasks.length, 750);
+  assert.equal(result.incomplete_tasks.at(-1).id, 750);
+});
+
+test('preserves the exact character object and all task prerequisite fields', () => {
+  const sourceCharacter = character({ custom_field: { keep: true }, timestamp: 'now' });
+  const result = build([task(7, 'global', {
+    tier: 'Elite',
+    points: 200,
+    info: 'Bring an item',
+    requirements_text: 'Requires access',
+    skill_requirements: [{ skill: 'Magic', level: 80 }],
     completion_pct: null,
-    skill_requirements: [{ skill: 'Smithing', level: 70 }, { skill: 'Cooking', level: 60 }]
-  }), { Smithing: 50, Cooking: 50 });
-  assert.equal(readyBlessing.skill_ready, true);
-  assert.equal(LeagueExport.quickWinScore(readyBlessing), 46);
-  assert.equal(gapTask.total_skill_gap, 30);
-  assert.equal(LeagueExport.quickWinScore(gapTask), -12);
+    blessing_task: true
+  })], { character: sourceCharacter });
+
+  assert.strictEqual(result.character, sourceCharacter);
+  assert.deepEqual(result.incomplete_tasks[0], {
+    id: 7,
+    region: 'global',
+    tier: 'Elite',
+    points: 200,
+    task: 'Task 7',
+    info: 'Bring an item',
+    requirements_text: 'Requires access',
+    skill_requirements: [{ skill: 'Magic', level: 80 }],
+    completion_pct: null,
+    blessing_task: true
+  });
 });
 
-test('point buckets count all tiers and skill-ready tasks separately', () => {
-  const data = build([
-    task(1, 10),
-    task(2, 10, { skill_requirements: [{ skill: 'Smithing', level: 60 }] }),
-    task(3, 30), task(4, 80), task(5, 200), task(6, 400)
-  ]);
-  assert.deepEqual(data.remaining_by_points['10'], { task_count: 2, total_points: 20 });
-  assert.deepEqual(data.skill_ready_by_points['10'], { task_count: 1, total_points: 10 });
-  assert.deepEqual(data.remaining_by_points['400'], { task_count: 1, total_points: 400 });
+test('includes every relic and blessing tier with breakpoints and selected choices', () => {
+  const result = build([], {
+    relicSelections: { 'Tier 1': 'Endless Harvest', 'Tier 6': 'Not a relic' },
+    blessingSelections: { 'God Tier 1': "Demon's Mark" }
+  });
+
+  assert.equal(result.relics.length, 7);
+  assert.deepEqual(result.relics[0], { tier: 'Tier 1', breakpoint_points: 10, choice: 'Endless Harvest' });
+  assert.equal(result.relics.find(entry => entry.tier === 'Tier 6').choice, null);
+  assert.equal(result.relics.at(-1).breakpoint_points, 20000);
+  assert.equal(result.blessings.length, 8);
+  assert.deepEqual(result.blessings.find(entry => entry.tier === 'God Tier 1'), {
+    tier: 'God Tier 1', breakpoint_tasks: 9, choice: "Demon's Mark"
+  });
+  assert.equal(result.blessings.at(-1).breakpoint_tasks, 26);
 });
 
-test('relic route reaches the 125 percent backup target when candidates permit', () => {
-  const data = build([task(1, 80), task(2, 30), task(3, 30), task(4, 10)]);
-  const target = data.near_relic_target;
-  assert.equal(target.points_required, 100);
-  assert.equal(target.backup_points_target, 125);
-  assert.equal(target.route_available_points, 140);
-  assert.equal(target.target_reached, true);
-  assert.equal(target.backup_target_reached, true);
-  assert.equal(target.ranked_route_with_backups.at(-1).cumulative_points, 140);
+test('migrates valid legacy regions, relics, blessing text, and character JSON', () => {
+  const migrated = LeagueExport.migrateState({
+    regions: ['global', 'tirannwn'],
+    relics: { 'Tier 1': 'Endless Harvest', 'Tier 2': 'Made Up' },
+    blessings: "Tier 1: Big Boned\nGod Tier 2: Genesis Essence\nSomething unknown",
+    charjson: '{"league_tasks":[],"levels":{}}'
+  });
+
+  assert.deepEqual(migrated.regions, ['global', 'tirannwn']);
+  assert.deepEqual(migrated.relics, { 'Tier 1': 'Endless Harvest' });
+  assert.deepEqual(migrated.blessings, { 'Tier 1': 'Big Boned', 'God Tier 2': 'Genesis Essence' });
+  assert.equal(migrated.charjson, '{"league_tasks":[],"levels":{}}');
 });
 
-test('relic route reports already reached and insufficient candidate states honestly', () => {
-  const reached = build([task(1, 10)], { currentPoints: 6000 }).near_relic_target;
-  assert.equal(reached.points_required, 0);
-  assert.equal(reached.ranked_route_with_backups.length, 0);
-  assert.equal(reached.target_reached, true);
-  assert.equal(reached.backup_target_reached, true);
-
-  const insufficient = build([task(1, 30)], { currentPoints: 5800 }).near_relic_target;
-  assert.equal(insufficient.route_available_points, 30);
-  assert.equal(insufficient.target_reached, false);
-  assert.equal(insufficient.backup_target_reached, false);
-});
-
-test('Production Master candidates require explicit bulk production language', () => {
-  const data = build([
-    task(1, 200, { task: 'Smith 100 rune platebodies', skill_requirements: [{ skill: 'Smithing', level: 50 }] }),
-    task(2, 80, { task: 'Cook several sharks', skill_requirements: [{ skill: 'Cooking', level: 45 }] }),
-    task(3, 30, { task: 'Talk to the smith', skill_requirements: [{ skill: 'Smithing', level: 50 }] }),
-    task(4, 30, { task: 'Smith a sword', skill_requirements: [{ skill: 'Smithing', level: 50 }] }),
-    task(5, 400, { task: 'Smith 100 masterwork pieces', skill_requirements: [{ skill: 'Smithing', level: 99 }] }),
-    task(6, 80, { task: 'Craft 100 nature runes', skill_requirements: [{ skill: 'Runecrafting', level: 44 }] })
-  ]);
-  assert.deepEqual(data.production_master_defer_candidates.map(entry => entry.id).sort(), [1, 2, 6]);
-  assert.match(data.production_master_defer_candidates[0].reason, /Production Master/);
-  assert.match(data.production_master_defer_candidates.find(entry => entry.id === 6).reason, /runecrafting/);
-});
-
-test('exported task views preserve prerequisite context', () => {
-  const data = build([task(1, 10, { info: 'Buy this item', requirements_text: 'Requires access to an area' })]);
-  const exported = data.ranked_quick_wins[0];
-  assert.equal(exported.info, 'Buy this item');
-  assert.equal(exported.requirements_text, 'Requires access to an area');
-  assert.equal(exported.skill_ready, true);
+test('clipboard output is deterministic prompt plus structured JSON', () => {
+  const result = build([task(1)]);
+  const first = LeagueExport.buildClipboardText(result);
+  const second = LeagueExport.buildClipboardText(result);
+  assert.equal(first, second);
+  const [prompt, json] = first.split('\n\n');
+  assert.match(prompt, /Recommend only from incomplete_tasks/);
+  assert.deepEqual(JSON.parse(json), result);
 });
